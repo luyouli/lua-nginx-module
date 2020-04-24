@@ -8,7 +8,7 @@ use Test::Nginx::Socket::Lua;
 
 repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3 + 59);
+plan tests => repeat_each() * (blocks() * 3 + 80);
 
 #no_diff();
 no_long_string();
@@ -1963,3 +1963,153 @@ foo
 Content-Type: application/json
 --- no_error_log
 [error]
+
+
+
+=== TEST 87: unsafe header value (with '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header.header = "value\rfoo:bar\nbar:foo"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+header:
+foo:
+bar:
+--- error_log
+unsafe byte "0xd" in header value "value\x0Dfoo:bar\x0Abar:foo"
+failed to set header
+
+
+
+=== TEST 88: unsafe header value (with '\n')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header.header = "value\nfoo:bar\rbar:foo"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+header:
+foo:
+bar:
+--- error_log
+unsafe byte "0xa" in header value "value\x0Afoo:bar\x0Dbar:foo"
+failed to set header
+
+
+
+=== TEST 89: unsafe header name (with '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["header: value\rfoo:bar\nbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+header:
+foo:
+bar:
+--- error_log
+unsafe byte "0xd" in header name "header: value\x0Dfoo:bar\x0Abar:foo"
+failed to set header
+
+
+
+=== TEST 90: unsafe header name (with '\n')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["header: value\nfoo:bar\rbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+header:
+foo:
+bar:
+--- error_log
+unsafe byte "0xa" in header name "header: value\x0Afoo:bar\x0Dbar:foo"
+failed to set header
+
+
+
+=== TEST 91: unsafe header name (with prefix '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["\rheader: value\rfoo:bar\nbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+header:
+foo:
+bar:
+--- error_log
+unsafe byte "0xd" in header name "\x0Dheader: value\x0Dfoo:bar\x0Abar:foo"
+failed to set header
+
+
+
+=== TEST 92: unsafe header name (with prefix '\n')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["\nheader: value\nfoo:bar\rbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+header:
+foo:
+bar:
+--- error_log
+unsafe byte "0xa" in header name "\x0Aheader: value\x0Afoo:bar\x0Dbar:foo"
+failed to set header
+
+
+
+=== TEST 93: multiple unsafe header values (with '\n' and '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["foo"] = {
+                "foo\nxx:bar",
+                "bar\rxxx:foo",
+            }
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- response_headers
+foo:
+xx:
+xxx:
+--- error_log
+unsafe byte "0xa" in header value "foo\x0Axx:bar"
+failed to set header
